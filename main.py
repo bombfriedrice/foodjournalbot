@@ -19,6 +19,9 @@ SPREADSHEET_ID = os.getenv('SPREADSHEET_ID')
 SERVICE_ACCOUNT_FILE = os.getenv('SERVICE_ACCOUNT_FILE')
 CHAT_ID = os.getenv('CHAT_ID')
 
+# Initialize the bot
+bot = Bot(token=TELEGRAM_TOKEN)
+
 # Retrieve user IDs from environment variables
 USER_ID_RAQUEL = os.getenv('USER_ID_RAQUEL')
 USER_ID_MOM = os.getenv('USER_ID_MOM')
@@ -109,11 +112,12 @@ def handle_message(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
     user_id = update.message.from_user.id
 
-    # Check if user is already in the process of entering data
+    # Initialize user data if not present
     if user_id not in user_data:
         user_data[user_id] = {'step': 0, 'data': []}
+        print(f"Initialized user data for user_id: {user_id}")
 
-    # Define the prompts for each column
+    # Define prompts for each step
     prompts = [
         "Please enter the Date (e.g., YYYY-MM-DD):",
         "What was the Meal/Snack?",
@@ -127,36 +131,42 @@ def handle_message(update: Update, context: CallbackContext):
 
     # Get the current step
     step = user_data[user_id]['step']
+    print(f"Current step for user_id {user_id}: {step}")
 
-    # Handle photo input
+    # Handle photo input for step 5
     if step == 5 and update.message.photo:
-        # Get the file ID of the largest photo
         photo_file_id = update.message.photo[-1].file_id
         user_data[user_id]['data'].append(photo_file_id)
         user_data[user_id]['step'] += 1
+        print(f"Received photo for user_id {user_id}: {photo_file_id}")
     elif step < len(prompts):
-        # Handle text input
+        # Handle text input for other steps
         user_message = update.message.text
         user_data[user_id]['data'].append(user_message)
         user_data[user_id]['step'] += 1
+        print(f"Received message for user_id {user_id}: {user_message}")
 
-    # If all data is collected, append to Google Sheets
+    # Check if all data is collected
     if user_data[user_id]['step'] == len(prompts):
         tab_name = get_user_tab(user_id)
-        append_to_sheet(tab_name, user_data[user_id]['data'])
-        context.bot.send_message(chat_id=chat_id, text="Thank you! Your data has been recorded.")
-        
-        # Send the link to the Google Sheet for confirmation
-        sheet_link = "https://docs.google.com/spreadsheets/d/1AbQLDdr6M8jyeyVV6NMDLZ8yZmBwXEt_FAWWjx4169A/edit?gid=1458540688#gid=1458540688"
-        context.bot.send_message(chat_id=chat_id, text=f"You can view your entry here: {sheet_link}")
+        if tab_name:
+            append_to_sheet(tab_name, user_data[user_id]['data'])
+            context.bot.send_message(chat_id=chat_id, text="Thank you! Your data has been recorded.")
+            sheet_link = "https://docs.google.com/spreadsheets/d/1AbQLDdr6M8jyeyVV6NMDLZ8yZmBwXEt_FAWWjx4169A/edit?gid=1458540688#gid=1458540688"
+            context.bot.send_message(chat_id=chat_id, text=f"You can view your entry here: {sheet_link}")
+            print(f"Data recorded for user_id {user_id}: {user_data[user_id]['data']}")
+        else:
+            context.bot.send_message(chat_id=chat_id, text="Error: Unable to find your tab in the spreadsheet.")
+            print(f"Error: Tab not found for user_id {user_id}")
         
         # Reset user data
         del user_data[user_id]
+        print(f"Reset user data for user_id {user_id}")
     else:
-        # Use GPT-4o Mini to generate the next prompt
-        context_message = "Please ask the user for their meal details in a friendly manner."
-        bot_response = get_gpt4o_mini_response(prompts[step], context_message)
-        context.bot.send_message(chat_id=chat_id, text=bot_response)
+        # Send the next prompt
+        next_prompt = prompts[user_data[user_id]['step']]
+        context.bot.send_message(chat_id=chat_id, text=next_prompt)
+        print(f"Sent prompt to user_id {user_id}: {next_prompt}")
 
 def send_reminder(chat_id, message):
     """
